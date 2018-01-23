@@ -1,4 +1,4 @@
-### Wrapper for running QEMU Libvirt in Docker
+### Wrapper for interacting with QEMU Libvirt through Docker
 
 This is not a tool for running VMs in a container.
 
