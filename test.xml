@@ -27,6 +27,10 @@
     <emulator>/usr/bin/qemu-system-x86_64</emulator>
     <controller type="usb" index="0" model="none"/>
     <controller type="pci" index="0" model="pci-root"/>
+    <interface type="direct" trustGuestRxFilters="yes">
+      <source dev="eno1" mode="bridge"/>
+      <model type="virtio-net"/>
+    </interface>
     <channel type="spicevmc">
       <target type="virtio" name="com.redhat.spice.0"/>
     </channel>
