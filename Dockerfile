@@ -23,4 +23,5 @@ RUN set -x \
 
 COPY --from=BUILD /go/src/goapp/goapp /
 
-ENTRYPOINT ["/goapp"]
+COPY entrypoint.sh /
+ENTRYPOINT ["/entrypoint.sh"]

@@ -13,6 +13,8 @@ import (
 var (
 	xmlConfig = flag.String("c", "", "XML config")
 	host = flag.String("s", "", "Server")
+	monitorInterval = flag.Int("m", 5000, "Monitor internal")
+	shutdownTimeout = flag.Int("t", 8000, "Shutdown timeout")
 
 	sigChan chan os.Signal
 	shutdownWait chan struct{}
@@ -59,14 +61,12 @@ func (conn *Connect) Reconnect() error {
 
 func (conn *Connect) NewDomain(config string) (*Domain, error) {
 	err := conn.Reconnect()
-
 	if err != nil {
 		return nil, err
 	}
 
 	// dom, err := conn.Connect.DomainCreateXML(config, libvirt.DOMAIN_NONE)
 	dom, err := conn.Connect.DomainDefineXML(config)
-
 	if err != nil {
 		libvirtErr, _ := err.(libvirt.Error)
 
@@ -74,27 +74,32 @@ func (conn *Connect) NewDomain(config string) (*Domain, error) {
 		case 9:
 			uuid := string(libvirtErr.Message[len(libvirtErr.Message)-36:])
 
-			fmt.Println("Domain found running", uuid)
-			dom, err = conn.Connect.LookupDomainByUUIDString(uuid)
+			fmt.Println("Domain found defined", uuid)
 
+			dom, err = conn.Connect.LookupDomainByUUIDString(uuid)
 			if err != nil {
 				return nil, err
 			}
 
+			// fmt.Println(dom.GetXMLDesc(10))
 		default:
 			return nil, err
 		}
 	}
 
 	active, err := dom.IsActive()
-
 	if err != nil {
 		return nil, err
 	}
 
 	if !active {
-		err = dom.Create()
+		// err = dom.Create()
+		err = dom.Undefine()
+		if err != nil {
+			return nil, err
+		}
 
+		dom, err = conn.Connect.DomainDefineXML(config)
 		if err != nil {
 			return nil, err
 		}
@@ -115,7 +120,6 @@ func (dom *Domain) Monitor() {
 			fmt.Println("Got signal", s)
 
 			err := dom.Domain.Shutdown()
-
 			if err != nil {
 				panic(err)
 			}
@@ -123,9 +127,8 @@ func (dom *Domain) Monitor() {
 			shutdownWait <-struct{}{}
 			return
 
-		case <-time.After(5000 * time.Millisecond):
+		case <-time.After(time.Duration(*monitorInterval) * time.Millisecond):
 			active, err := dom.Domain.IsActive()
-
 			if err != nil {
 				panic(err)
 			}
@@ -134,7 +137,6 @@ func (dom *Domain) Monitor() {
 				fmt.Println("VM inactive - restarting")
 
 				err = dom.Domain.Create()
-
 				if err != nil {
 					panic(err)
 				}
@@ -144,8 +146,7 @@ func (dom *Domain) Monitor() {
 }
 
 func (dom *Domain) Shutdown() {
-
-	timerDestroy := time.NewTimer(8000 * time.Millisecond)
+	timerDestroy := time.NewTimer(time.Duration(*shutdownTimeout) * time.Millisecond)
 
 	for {
 		select {
@@ -153,12 +154,11 @@ func (dom *Domain) Shutdown() {
 			fmt.Println("Shutdown timed out")
 
 			err := dom.Domain.Destroy()
-
 			if err != nil {
 				libvirtErr, _ := err.(libvirt.Error)
 
 				switch libvirtErr.Code {
-        // not running
+				// not running
 				case 55:
 					os.Exit(0)
 
@@ -170,14 +170,13 @@ func (dom *Domain) Shutdown() {
 			fmt.Println("Sending destroy")
 			os.Exit(0)
 
-		case <-time.After(1000 * time.Millisecond):
+		case <-time.After(200 * time.Millisecond):
 			active, err := dom.Domain.IsActive()
-
 			if err != nil {
 				libvirtErr, _ := err.(libvirt.Error)
 
 				switch libvirtErr.Code {
-        // not running
+				// not running
 				case 55:
 					fmt.Println("Shutdown")
 					os.Exit(0)
@@ -202,13 +201,11 @@ func main() {
 	fmt.Println("Connect", *host)
 
 	conn, err := NewConn(*host)
-
 	if err != nil {
 		panic(err)
 	}
 
 	dom, err := conn.NewDomain(*xmlConfig)
-
 	if err != nil {
 		panic(err)
 	}
@@ -223,7 +220,7 @@ func main() {
 		case <-shutdownWait:
 			dom.Shutdown()
 
-		case <-time.After(1000 * time.Millisecond):
+		case <-time.After(200 * time.Millisecond):
 		}
 	}
 }
